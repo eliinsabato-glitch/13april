@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<title>13 April</title>
+
+<!-- PWA / iOS home screen app config -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#12141A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="13 April">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- Splash / boot screen -->
+<div id="splash">
+  <div class="splash-title">13<span class="splash-slash">·</span>APRIL</div>
+  <div class="splash-tag">BECOMING HER</div>
+</div>
+
+<!-- Onboarding -->
+<div id="onboarding" class="screen hidden">
+  <div class="onboard-content">
+    <div class="onboard-step" data-step="1">
+      <div class="onboard-eyebrow">13 APRIL</div>
+      <h1>Becoming her.</h1>
+      <p>Da ottobre al 13 aprile. Non per stravolgere la tua vita — per arrivarci sentendoti più costante, più curata, più tua.</p>
+      <button class="btn-primary" data-next>Inizia</button>
+    </div>
+    <div class="onboard-step hidden" data-step="2">
+      <h2>Quando è il tuo traguardo?</h2>
+      <p class="muted">Di default: 13 aprile del prossimo anno utile.</p>
+      <input type="date" id="target-date-input" class="input-field">
+      <button class="btn-primary" data-next>Continua</button>
+    </div>
+    <div class="onboard-step hidden" data-step="3">
+      <h2>Il tuo calendario</h2>
+      <p class="muted">Importa un file .ics (esportato da Calendario, Google Calendar, ecc.) così l'app può capire quanto sono piene le tue giornate. Puoi farlo anche più tardi da Impostazioni.</p>
+      <label class="btn-secondary" for="ics-input-onboard">Importa file .ics</label>
+      <input type="file" id="ics-input-onboard" accept=".ics" class="hidden">
+      <div id="onboard-ics-status" class="muted small"></div>
+      <button class="btn-primary" data-next>Continua senza importare</button>
+    </div>
+    <div class="onboard-step hidden" data-step="4">
+      <h2>Pilates Reformer</h2>
+      <p class="muted">Hai 10 lezioni. Le distribuiamo in modo realistico nei prossimi ~3 mesi e mezzo, nei giorni migliori secondo il tuo calendario.</p>
+      <button class="btn-primary" data-action="finish-onboarding">Iniziamo</button>
+    </div>
+  </div>
+</div>
+
+<!-- Main app -->
+<div id="app" class="screen hidden">
+
+  <header id="top-bar">
+    <div id="top-bar-title">Today</div>
+    <button id="settings-shortcut" class="icon-btn" data-nav="settings">⋯</button>
+  </header>
+
+  <main id="content"></main>
+
+  <nav id="bottom-nav">
+    <button class="nav-item active" data-nav="today"><span class="nav-icon">◐</span><span>Today</span></button>
+    <button class="nav-item" data-nav="journey"><span class="nav-icon">◇</span><span>Journey</span></button>
+    <button class="nav-item" data-nav="habits"><span class="nav-icon">✓</span><span>Habits</span></button>
+    <button class="nav-item" data-nav="insights"><span class="nav-icon">▤</span><span>Insights</span></button>
+    <button class="nav-item" data-nav="settings"><span class="nav-icon">⚙</span><span>Settings</span></button>
+  </nav>
+</div>
+
+<!-- Generic modal / sheet -->
+<div id="sheet-overlay" class="hidden">
+  <div id="sheet"></div>
+</div>
+
+<script src="js/db.js"></script>
+<script src="js/calendar.js"></script>
+<script src="js/scoring.js"></script>
+<script src="js/habits.js"></script>
+<script src="js/app.js"></script>
+<script src="js/app-screens.js"></script>
+</body>
+</html>
