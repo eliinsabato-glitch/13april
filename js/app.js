@@ -22,7 +22,9 @@
     return Math.round(ms / 86400000);
   }
   function loadEvents() {
-    return (db.calendarEvents || []).map(e => ({ ...e, start: new Date(e.start), end: new Date(e.end) }));
+    const real = (db.calendarEvents || []).map(e => ({ ...e, start: new Date(e.start), end: new Date(e.end) }));
+    const tiro = TirocinioEngine.syntheticEvents(db.tirocinio?.linea || 'gialla', db.tirocinio?.myGroup || null);
+    return [...real, ...tiro];
   }
   function todayAnalysis() {
     return CalendarIntel.analyzeDay(loadEvents(), new Date());
@@ -81,6 +83,68 @@
   function skippedDaysBeforeToday() {
     const last3 = lastNDates(3).map(d => db.dayRecords[isoDay(d)]);
     return last3.filter(r => !r || !r.minimumDayAchieved).length;
+  }
+
+  // ---------- Exams ----------
+
+  function examList() {
+    return [...(db.exams || [])].sort((a, b) => new Date(a.date) - new Date(b.date));
+  }
+
+  function upcomingExams() {
+    const now = new Date();
+    return examList().filter(e => e.status !== 'done' && new Date(e.date) >= new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+  }
+
+  function nextExam() {
+    return upcomingExams()[0] || null;
+  }
+
+  function daysUntilExam(exam) {
+    return daysBetween(new Date(), new Date(exam.date));
+  }
+
+  // Weighted average by CFU when available, otherwise a simple mean.
+  function weightedAverage() {
+    const done = examList().filter(e => e.status === 'done' && e.grade != null && e.grade !== '');
+    if (!done.length) return null;
+    const totalCFU = done.reduce((s, e) => s + (+e.cfu || 0), 0);
+    if (totalCFU === 0) {
+      return Math.round((done.reduce((s, e) => s + (+e.grade), 0) / done.length) * 10) / 10;
+    }
+    const weighted = done.reduce((s, e) => s + (+e.grade) * (+e.cfu || 0), 0);
+    return Math.round((weighted / totalCFU) * 10) / 10;
+  }
+
+  function totalCFUDone() {
+    return examList().filter(e => e.status === 'done').reduce((s, e) => s + (+e.cfu || 0), 0);
+  }
+
+  // Days remaining before an exam that are NOT veryBusy (i.e. realistically usable for study).
+  function studyDaysAvailable(exam) {
+    const days = daysUntilExam(exam);
+    if (days <= 0) return 0;
+    const analyses = upcomingAnalyses(days);
+    return analyses.filter(a => a.load !== 'veryBusy').length;
+  }
+
+  function saveExam(exam) {
+    DB.set(s => {
+      const exams = s.exams || [];
+      const exists = exams.some(x => x.id === exam.id);
+      return { ...s, exams: exists ? exams.map(x => x.id === exam.id ? exam : x) : [...exams, exam] };
+    });
+    db = DB.get();
+  }
+
+  function deleteExam(id) {
+    DB.set(s => ({ ...s, exams: (s.exams || []).filter(x => x.id !== id) }));
+    db = DB.get();
+  }
+
+  function setTirocinioGroup(group) {
+    DB.set(s => ({ ...s, tirocinio: { ...s.tirocinio, myGroup: group } }));
+    db = DB.get();
   }
 
   // ---------- Today's plan generation (the heart of the app) ----------
@@ -343,7 +407,7 @@
 
   function render() {
     db = DB.get();
-    const titleMap = { today: 'Today', journey: 'Journey', habits: 'Habits', insights: 'Insights', settings: 'Settings' };
+    const titleMap = { today: 'Today', journey: 'Journey', habits: 'Habits', exams: 'Esami', insights: 'Insights', settings: 'Settings' };
     document.getElementById('top-bar-title').textContent = titleMap[currentTab];
     const content = document.getElementById('content');
     content.innerHTML = '';
@@ -351,7 +415,7 @@
     if (!screens) return; // app-screens.js not loaded yet
     const renderers = {
       today: screens.renderToday, journey: screens.renderJourney, habits: screens.renderHabits,
-      insights: screens.renderInsights, settings: screens.renderSettings,
+      exams: screens.renderExams, insights: screens.renderInsights, settings: screens.renderSettings,
     };
     (renderers[currentTab] || screens.renderToday)(content);
   }
@@ -365,5 +429,7 @@
     generateTodayPlan, minimumDayItems, todayChecklistState, toggleChecklistItem,
     handleICSImport, getDB: () => db, render, openSheet: null, closeSheet: null,
     checkAndAdvancePilatesCycle, dismissPilatesCycleMessage,
+    examList, upcomingExams, nextExam, daysUntilExam, weightedAverage, totalCFUDone,
+    studyDaysAvailable, saveExam, deleteExam, setTirocinioGroup,
   };
 })();

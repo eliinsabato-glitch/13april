@@ -45,6 +45,27 @@
     const minItems = S.minimumDayItems();
     const minDone = minItems.every(i => checklist[i.id]);
 
+    // Tirocinio: is today part of a confirmed rotation week?
+    const tiroWeek = TirocinioEngine.weekFor(new Date(), db.tirocinio?.linea || 'gialla');
+    const tiroStatus = TirocinioEngine.status(tiroWeek, db.tirocinio?.myGroup || null);
+    let tiroLine = '';
+    if (tiroStatus === 'confirmed') {
+      tiroLine = `<span class="muted small" style="margin-left:10px">&middot; ${tiroWeek.activity}</span>`;
+    } else if (tiroStatus === 'unconfirmed') {
+      tiroLine = `<span class="muted small" style="margin-left:10px">&middot; possibile tirocinio (gruppo da confermare)</span>`;
+    }
+
+    // Next exam countdown, shown only when reasonably close (2 weeks) so it
+    // doesn't clutter Today the rest of the time.
+    const next = S.nextExam();
+    let examLine = '';
+    if (next) {
+      const d = S.daysUntilExam(next);
+      if (d <= 14) {
+        examLine = `<div class="muted small" style="margin-top:6px">${next.name}: tra ${d} giorn${d === 1 ? 'o' : 'i'}</div>`;
+      }
+    }
+
     root.appendChild(el(`
       <div>
         <div class="card hero-countdown">
@@ -61,6 +82,8 @@
           <div class="section-label">Today's load</div>
           <span class="load-badge load-${plan.analysis.load}">${S.loadLabel(plan.analysis.load)}</span>
           <span class="muted small" style="margin-left:10px">${Math.round(plan.analysis.freeMin/60*10)/10}h libere &middot; ${plan.analysis.eventCount} impegni</span>
+          ${tiroLine}
+          ${examLine}
 
           <div class="section-label" style="margin-top:20px">Today's plan</div>
           <div id="priority-list"></div>
@@ -447,11 +470,197 @@
     });
   }
 
+  // ================= ESAMI (+ TIROCINIO) =================
+  function renderExams(root) {
+    const db = S.getDB();
+    const exams = S.examList();
+    const upcoming = exams.filter(e => e.status !== 'done');
+    const done = exams.filter(e => e.status === 'done');
+    const avg = S.weightedAverage();
+    const cfu = S.totalCFUDone();
+
+    root.appendChild(el(`
+      <div>
+        <div class="card" id="tirocinio-card">
+          <div class="section-label">Tirocinio &middot; Linea Gialla</div>
+          <div id="tiro-current"></div>
+          <div id="tiro-group-picker" style="margin-top:14px"></div>
+          <div class="section-label" style="margin-top:20px">Prossime settimane</div>
+          <div id="tiro-upcoming"></div>
+        </div>
+
+        <div class="card">
+          <div class="section-label">Media ponderata</div>
+          <div class="hero-days" style="font-size:32px">${avg !== null ? avg : '—'}</div>
+          <div class="muted small">${done.length} esami superati &middot; ${cfu} CFU</div>
+        </div>
+
+        <div class="card">
+          <div class="section-label">Da sostenere</div>
+          <div id="exam-upcoming-rows"></div>
+          <button class="btn-secondary" id="add-exam-btn">+ Aggiungi esame</button>
+        </div>
+
+        ${done.length ? `
+        <div class="card">
+          <div class="section-label">Superati</div>
+          <div id="exam-done-rows"></div>
+        </div>` : ''}
+      </div>
+    `));
+
+    // --- Tirocinio block ---
+    const linea = db.tirocinio?.linea || 'gialla';
+    const myGroup = db.tirocinio?.myGroup || null;
+    const curWeek = TirocinioEngine.currentWeek(linea);
+    const curStatus = TirocinioEngine.status(curWeek, myGroup);
+    const tiroCur = root.querySelector('#tiro-current');
+    if (!curWeek) {
+      tiroCur.innerHTML = `<p class="muted small">Nessuna settimana in corso nel calendario caricato.</p>`;
+    } else {
+      const label = curStatus === 'confirmed' ? curWeek.activity
+        : curStatus === 'unconfirmed' ? `${curWeek.activity} — gruppo da confermare`
+        : curStatus === 'free' ? 'Nessun impegno questa settimana'
+        : 'Non riguarda il tuo gruppo';
+      tiroCur.innerHTML = `
+        <div class="hero-days" style="font-size:22px; color: var(--text-primary)">${TirocinioEngine.weekLabel(curWeek)}</div>
+        <div class="muted small" style="margin-top:4px">${label}</div>
+      `;
+    }
+
+    const picker = root.querySelector('#tiro-group-picker');
+    picker.innerHTML = `
+      <label class="form-label">Il tuo gruppo PSD (se ancora non lo sai, lascia vuoto)</label>
+      <div class="chip-row" id="group-chips">
+        ${[1,2,3,4].map(g => `<button class="chip ${myGroup===g?'selected':''}" data-g="${g}">Gruppo ${g}</button>`).join('')}
+        <button class="chip ${!myGroup?'selected':''}" data-g="">Non so</button>
+      </div>
+    `;
+    picker.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const g = chip.dataset.g ? +chip.dataset.g : null;
+        S.setTirocinioGroup(g);
+        S.render();
+      });
+    });
+
+    const tiroUp = root.querySelector('#tiro-upcoming');
+    const upcomingWeeks = TirocinioEngine.upcoming(linea, 8);
+    if (!upcomingWeeks.length) {
+      tiroUp.appendChild(el(`<p class="muted small">Nessuna settimana futura nel calendario caricato.</p>`));
+    }
+    upcomingWeeks.forEach(w => {
+      const st = TirocinioEngine.status(w, myGroup);
+      if (st === 'free') return; // don't clutter the list with empty weeks
+      const tagClass = st === 'confirmed' ? 'load-busy' : st === 'unconfirmed' ? 'load-moderate' : 'load-light';
+      const tagText = st === 'confirmed' ? 'Confermato' : st === 'unconfirmed' ? 'Da confermare' : 'Altro gruppo';
+      tiroUp.appendChild(el(`
+        <div class="habit-row">
+          <div>
+            <div>${TirocinioEngine.weekLabel(w)}</div>
+            <div class="habit-meta">${w.activity}</div>
+          </div>
+          <span class="load-badge ${tagClass}" style="font-size:9px">${tagText}</span>
+        </div>
+      `));
+    });
+
+    // --- Esami block ---
+    const upcomingRows = root.querySelector('#exam-upcoming-rows');
+    if (!upcoming.length) {
+      upcomingRows.appendChild(el(`<p class="muted small">Nessun esame in programma — aggiungine uno.</p>`));
+    }
+    upcoming.forEach(exam => {
+      const d = S.daysUntilExam(exam);
+      const studyDays = S.studyDaysAvailable(exam);
+      const row = el(`
+        <div class="habit-row" data-id="${exam.id}">
+          <div>
+            <div>${exam.name}</div>
+            <div class="habit-meta">${new Date(exam.date).toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })} &middot; ${exam.cfu || 0} CFU &middot; ${d >= 0 ? `tra ${d}g` : 'passato'} &middot; ${studyDays} giorni di studio utili</div>
+          </div>
+          <button class="pill-btn">Edit</button>
+        </div>
+      `);
+      row.querySelector('button').addEventListener('click', () => openExamEditSheet(exam));
+      upcomingRows.appendChild(row);
+    });
+
+    root.querySelector('#add-exam-btn').addEventListener('click', () => openExamEditSheet(null));
+
+    const doneRows = root.querySelector('#exam-done-rows');
+    if (doneRows) {
+      done.slice().reverse().forEach(exam => {
+        const row = el(`
+          <div class="habit-row" data-id="${exam.id}">
+            <div>
+              <div>${exam.name}</div>
+              <div class="habit-meta">${exam.cfu || 0} CFU ${exam.grade != null && exam.grade !== '' ? `&middot; voto ${exam.grade}` : ''}</div>
+            </div>
+            <button class="pill-btn">Edit</button>
+          </div>
+        `);
+        row.querySelector('button').addEventListener('click', () => openExamEditSheet(exam));
+        doneRows.appendChild(row);
+      });
+    }
+  }
+
+  function openExamEditSheet(exam) {
+    const isNew = !exam;
+    const e = exam || { id: 'ex-' + Date.now(), name: '', date: S.isoDay(new Date()), cfu: '', status: 'todo', grade: '' };
+    openSheet(`
+      <div class="sheet-title">${isNew ? 'Nuovo esame' : 'Modifica esame'}</div>
+      <div class="form-row"><label class="form-label">Nome</label><input class="input-field" id="f-name" value="${e.name}"></div>
+      <div class="form-row"><label class="form-label">Data</label><input type="date" class="input-field" id="f-date" value="${S.isoDay(new Date(e.date))}"></div>
+      <div class="form-row"><label class="form-label">CFU</label><input type="number" class="input-field" id="f-cfu" value="${e.cfu}"></div>
+      <div class="form-row">
+        <label class="form-label">Stato</label>
+        <div class="chip-row" id="status-chips">
+          <button class="chip ${e.status==='todo'?'selected':''}" data-status="todo">Da dare</button>
+          <button class="chip ${e.status==='done'?'selected':''}" data-status="done">Superato</button>
+        </div>
+      </div>
+      <div class="form-row" id="grade-row" style="${e.status==='done'?'':'display:none'}">
+        <label class="form-label">Voto</label><input type="number" min="18" max="31" class="input-field" id="f-grade" value="${e.grade}">
+      </div>
+      <button class="btn-primary" id="save-exam">Salva</button>
+      ${!isNew ? '<button class="btn-secondary" id="delete-exam" style="color:var(--danger)">Elimina</button>' : ''}
+    `, (sheet) => {
+      let status = e.status;
+      sheet.querySelectorAll('#status-chips .chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          sheet.querySelectorAll('#status-chips .chip').forEach(c => c.classList.remove('selected'));
+          chip.classList.add('selected');
+          status = chip.dataset.status;
+          sheet.querySelector('#grade-row').style.display = status === 'done' ? '' : 'none';
+        });
+      });
+      sheet.querySelector('#save-exam').addEventListener('click', () => {
+        const updated = {
+          ...e,
+          name: sheet.querySelector('#f-name').value || e.name,
+          date: new Date(sheet.querySelector('#f-date').value + 'T00:00:00').toISOString(),
+          cfu: sheet.querySelector('#f-cfu').value,
+          status,
+          grade: status === 'done' ? sheet.querySelector('#f-grade').value : '',
+        };
+        S.saveExam(updated);
+        closeSheet(); S.render();
+      });
+      const del = sheet.querySelector('#delete-exam');
+      if (del) del.addEventListener('click', () => {
+        S.deleteExam(e.id);
+        closeSheet(); S.render();
+      });
+    });
+  }
+
   // ================= INSIGHTS =================
   function renderInsights(root) {
     const db = S.getDB();
     const records = Object.entries(db.dayRecords || {}).sort((a,b) => a[0].localeCompare(b[0]));
-    const last30 = records.slice(-30);
+    const next = S.nextExam();
 
     root.appendChild(el(`
       <div>
@@ -460,10 +669,24 @@
           <div class="hero-days" style="font-size:32px">${db.streak.current}</div>
           <div class="muted small">Best: ${db.streak.best} &middot; Flex days available: ${db.streak.flexDays}</div>
         </div>
+
+        ${next ? `
         <div class="card">
-          <div class="section-label">Last 30 days</div>
-          <div id="bars" style="display:flex; align-items:flex-end; gap:3px; height:80px;"></div>
+          <div class="section-label">Verso il prossimo esame</div>
+          <div class="hero-days" style="font-size:22px; color: var(--text-primary)">${next.name}</div>
+          <div class="muted small" style="margin-top:4px">${S.daysUntilExam(next)} giorni alla data &middot; ${S.studyDaysAvailable(next)} giorni di studio utili (esclusi i giorni Very Busy)</div>
+        </div>` : ''}
+
+        <div class="card">
+          <div class="section-label">Ultime 12 settimane</div>
+          <div id="heatmap"></div>
         </div>
+
+        <div class="card">
+          <div class="section-label">Andamento mensile</div>
+          <div id="monthly-trend"></div>
+        </div>
+
         <div class="card">
           <div class="section-label">Patterns</div>
           <div id="patterns"></div>
@@ -471,15 +694,62 @@
       </div>
     `));
 
-    const bars = root.querySelector('#bars');
-    if (last30.length === 0) {
-      bars.appendChild(el(`<div class="muted small">Nessun dato ancora — inizia a completare le priorità di oggi.</div>`));
+    // --- Heatmap: last 84 days, 12 columns of 7 (Mon-Sun) ---
+    const heatmap = root.querySelector('#heatmap');
+    const days = 84;
+    const cells = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const rec = db.dayRecords[S.isoDay(d)];
+      cells.push({ date: d, rec });
+    }
+    // pad to start on Monday for a clean 7-row grid
+    const firstWeekday = (cells[0].date.getDay() + 6) % 7; // 0=Mon
+    for (let i = 0; i < firstWeekday; i++) cells.unshift({ date: null, rec: null });
+
+    const grid = el(`<div style="display:grid; grid-auto-flow:column; grid-template-rows:repeat(7,12px); gap:3px; overflow-x:auto; padding-bottom:4px;"></div>`);
+    cells.forEach(c => {
+      let bg = 'rgba(255,255,255,0.05)';
+      if (c.rec) {
+        const score = c.rec.score || 0;
+        if (!c.rec.minimumDayAchieved) bg = 'rgba(201,126,112,0.35)';
+        else if (score >= 85) bg = 'var(--accent)';
+        else if (score >= 65) bg = 'rgba(217,201,163,0.55)';
+        else bg = 'rgba(156,187,156,0.5)';
+      }
+      const title = c.date ? `${c.date.toLocaleDateString('it-IT')}${c.rec ? ' · ' + Math.round(c.rec.score||0) : ''}` : '';
+      grid.appendChild(el(`<div title="${title}" style="width:12px;height:12px;border-radius:3px;background:${bg};visibility:${c.date?'visible':'hidden'}"></div>`));
+    });
+    heatmap.appendChild(grid);
+    if (!records.length) heatmap.appendChild(el(`<div class="muted small" style="margin-top:8px">Nessun dato ancora — inizia a completare le priorità di oggi.</div>`));
+
+    // --- Monthly trend: average score per calendar month that has data ---
+    const monthly = root.querySelector('#monthly-trend');
+    const byMonth = {};
+    records.forEach(([k, r]) => {
+      const mk = k.slice(0, 7); // YYYY-MM
+      (byMonth[mk] = byMonth[mk] || []).push(r.score || 0);
+    });
+    const monthKeys = Object.keys(byMonth).sort();
+    if (!monthKeys.length) {
+      monthly.appendChild(el(`<div class="muted small">Non ci sono ancora dati mensili.</div>`));
     } else {
-      last30.forEach(([, r]) => {
-        const h = Math.max(4, (r.score || 0) / 100 * 80);
-        const color = r.minimumDayAchieved ? 'var(--success)' : 'var(--stroke)';
-        bars.appendChild(el(`<div style="flex:1; height:${h}px; background:${color}; border-radius:3px;"></div>`));
+      const monthNames = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+      const wrap = el(`<div style="display:flex; align-items:flex-end; gap:8px; height:90px;"></div>`);
+      monthKeys.forEach(mk => {
+        const scores = byMonth[mk];
+        const avg = Math.round(scores.reduce((a,b)=>a+b,0) / scores.length);
+        const h = Math.max(4, avg / 100 * 80);
+        const label = monthNames[+mk.slice(5,7) - 1];
+        wrap.appendChild(el(`
+          <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px;">
+            <div style="font-size:10px; color:var(--text-secondary)">${avg}</div>
+            <div style="width:100%; height:${h}px; background:var(--accent); border-radius:3px 3px 0 0;"></div>
+            <div style="font-size:10px; color:var(--text-tertiary)">${label}</div>
+          </div>
+        `));
       });
+      monthly.appendChild(wrap);
     }
 
     const patterns = root.querySelector('#patterns');
@@ -513,6 +783,11 @@
           <label class="btn-secondary" for="settings-ics-input">Import .ics</label>
           <input type="file" id="settings-ics-input" accept=".ics" class="hidden">
           <div id="settings-ics-status" class="muted small" style="margin-top:6px"></div>
+        </div>
+
+        <div class="card">
+          <div class="section-label">Tirocinio</div>
+          <p class="muted small">Il calendario APRO (Linea Gialla) e il tuo gruppo PSD si gestiscono dalla scheda Esami. Le settimane di tirocinio confermate vengono trattate come impegni fissi (8:00–14:00, lun-ven) nel calcolo del carico giornaliero.</p>
         </div>
 
         <div class="card">
@@ -566,7 +841,5 @@
     });
   }
 
-  window.__ta_screens = { renderToday, renderJourney, renderHabits, renderInsights, renderSettings };
-  // patch the renderer map used in app.js
-  const originalRender = window.__ta_shared.render;
+  window.__ta_screens = { renderToday, renderJourney, renderHabits, renderExams, renderInsights, renderSettings };
 })();

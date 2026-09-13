@@ -24,6 +24,19 @@ const DB = (() => {
       dayRecords: {},            // date -> {load, score, level, examMode, recoveryMode}
       streak: { current: 0, best: 0, flexDays: 0, lastDate: null },
       skipTracking: {},           // habitId -> {weekday: {skips, completes}}
+
+      // Exams: fully user-managed (add/edit/delete from the Esami tab).
+      // {id, name, date, cfu, status: 'todo'|'done', grade}
+      exams: [],
+
+      // Tirocinio / rotation tracking. The actual rotation calendar (dates,
+      // activities) lives in tirocinio.js as reference data — it's academic
+      // planning data, not personal state. Here we only keep what's personal:
+      // which "linea" (color) and, once known, which PSD sub-group.
+      tirocinio: {
+        linea: 'gialla',   // which color line the student belongs to
+        myGroup: null,     // 1-4, or null until known — editable anytime in Settings
+      },
     };
   }
 
@@ -33,7 +46,10 @@ const DB = (() => {
       if (!raw) return defaultState();
       const parsed = JSON.parse(raw);
       // shallow-merge with defaults so new fields added in updates don't break old saves
-      return { ...defaultState(), ...parsed };
+      const merged = { ...defaultState(), ...parsed };
+      merged.tirocinio = { ...defaultState().tirocinio, ...(parsed.tirocinio || {}) };
+      merged.exams = parsed.exams || [];
+      return merged;
     } catch (e) {
       console.error('DB load failed', e);
       return defaultState();
