@@ -2,7 +2,7 @@
 // after the first successful load. Bump CACHE_NAME when you update files
 // so returning users get the new version instead of a stale cache.
 
-const CACHE_NAME = '13april-cache-v1';
+const CACHE_NAME = '13april-cache-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -12,6 +12,7 @@ const ASSETS = [
   './js/calendar.js',
   './js/scoring.js',
   './js/habits.js',
+  './js/tirocinio.js',
   './js/app.js',
   './js/app-screens.js',
   './icons/icon-192.png',
