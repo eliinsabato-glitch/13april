@@ -115,15 +115,15 @@ html, body {
   background: rgba(24,27,34,0.92);
   backdrop-filter: blur(20px);
   border-top: 1px solid var(--stroke);
-  padding: 8px 4px calc(var(--safe-bottom) + 6px);
+  padding: 8px 2px calc(var(--safe-bottom) + 6px);
   z-index: 60;
 }
 .nav-item {
   flex: 1; background: none; border: none; color: var(--text-tertiary);
   display: flex; flex-direction: column; align-items: center; gap: 3px;
-  font-size: 10px; letter-spacing: 0.5px; padding: 6px 0;
+  font-size: 9px; letter-spacing: 0.3px; padding: 6px 0;
 }
-.nav-item .nav-icon { font-size: 18px; }
+.nav-item .nav-icon { font-size: 16px; }
 .nav-item.active { color: var(--accent); }
 
 #content { padding: 56px 20px 20px; }
@@ -216,16 +216,16 @@ html, body {
 .timeline-month-name { font-size: 15px; font-weight: 600; }
 .timeline-month-phase { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
 
-/* Habit rows */
+/* Habit rows (also used for exam rows and tirocinio week rows) */
 .habit-row {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 14px 0; border-bottom: 1px solid var(--stroke);
 }
 .habit-row:last-child { border-bottom: none; }
 .habit-meta { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
 .pill-btn {
   border: 1px solid var(--stroke); background: var(--bg-elevated); color: var(--text-secondary);
-  border-radius: 999px; padding: 6px 12px; font-size: 12px;
+  border-radius: 999px; padding: 6px 12px; font-size: 12px; flex-shrink: 0;
 }
 
 /* Pilates dots */
